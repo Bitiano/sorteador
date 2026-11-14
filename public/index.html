@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f0e8">
+  <title>Inimigo secreto em círculo</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">✳</span><span>inimigo secreto<span class="brand-dot">.</span></span></div>
+      <span class="topbar-note">Sorteio circular · envio privado</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div class="eyebrow"><span class="eyebrow-line"></span> ORGANIZE EM MINUTOS</div>
+        <div class="intro-grid">
+          <div>
+            <h1 id="page-title">Uma roda de <em>surpresas.</em></h1>
+            <p>Adicione o grupo, escolha quem começa e envie o resultado em segredo para cada pessoa.</p>
+          </div>
+          <div class="circle-art" aria-hidden="true">
+            <span class="orbit orbit-one"></span><span class="orbit orbit-two"></span>
+            <span class="circle-center">↗</span>
+            <span class="circle-person person-one"></span><span class="circle-person person-two"></span><span class="circle-person person-three"></span><span class="circle-person person-four"></span>
+          </div>
+        </div>
+      </section>
+
+      <div class="workspace" id="workspace">
+        <section class="form-section" aria-labelledby="event-heading">
+          <div class="section-heading"><span class="step-number">01</span><div><h2 id="event-heading">Seu evento</h2><p>As informações aparecem no e-mail enviado aos participantes.</p></div></div>
+          <label class="field-label" for="event-name">Nome do evento</label>
+          <input id="event-name" type="text" maxlength="100" placeholder="Ex.: Natal da família" autocomplete="off" required>
+        </section>
+
+        <section class="form-section participants-section" aria-labelledby="people-heading">
+          <div class="section-heading"><span class="step-number">02</span><div><h2 id="people-heading">Participantes <span id="participant-count" class="count">3</span></h2><p>Use um nome e um e-mail diferente para cada pessoa.</p></div></div>
+          <div class="list-head" aria-hidden="true"><span>NOME</span><span>E-MAIL</span></div>
+          <div id="participants" class="participant-list"></div>
+          <button id="add-person" type="button" class="text-button"><span aria-hidden="true">＋</span> Adicionar pessoa</button>
+        </section>
+
+        <section class="form-section last-section" aria-labelledby="order-heading">
+          <div class="section-heading"><span class="step-number">03</span><div><h2 id="order-heading">Início da roda</h2><p>Quem dá o primeiro presente será a última pessoa a receber.</p></div></div>
+          <label class="field-label" for="first-person">Quem começa?</label>
+          <select id="first-person"><option value="">Escolher aleatoriamente</option></select>
+          <div class="circle-explanation"><span class="mini-circle" aria-hidden="true">↻</span><p>O sorteio forma uma única roda: cada pessoa presenteia a próxima, e a última presenteia quem começou.</p></div>
+        </section>
+
+        <div class="action-bar">
+          <div class="action-note"><span class="privacy-icon" aria-hidden="true">✉</span><span>O par de cada pessoa fica somente no e-mail dela.</span></div>
+          <button id="draw-button" type="button" class="primary-button">Sortear e enviar e-mails <span aria-hidden="true">↗</span></button>
+        </div>
+        <div id="message" class="message" role="alert" hidden></div>
+      </div>
+
+      <section id="result" class="result" hidden aria-labelledby="result-heading">
+        <div class="result-heading"><span class="result-symbol" aria-hidden="true">✳</span><div><h2 id="result-heading">Sorteio criado</h2><p id="result-subtitle"></p></div></div>
+        <div id="delivery-list" class="delivery-list"></div>
+        <p class="result-privacy">Os nomes sorteados não aparecem aqui. Cada pessoa vê apenas seu destinatário no e-mail.</p>
+        <div class="result-actions"><button id="retry-button" class="primary-button" type="button" hidden>Tentar enviar os pendentes <span aria-hidden="true">↗</span></button><button id="new-button" class="secondary-button" type="button">Novo sorteio</button></div>
+        <div id="result-message" class="message" role="alert" hidden></div>
+      </section>
+    </main>
+
+    <footer><span>Feito para manter a surpresa.</span><span>Envio por Brevo</span></footer>
+  </div>
+</body>
+</html>
