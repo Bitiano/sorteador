@@ -47,26 +47,19 @@ export function createDraw(input, random = randomInt) {
   return {
     id: randomUUID(),
     eventName,
-    createdAt: new Date().toISOString(),
     deliveries: shuffled.map((giver, index) => ({
       giver,
       receiver: shuffled[(index + 1) % shuffled.length],
-      status: 'pending',
-      messageId: null
+      status: 'pending'
     }))
   };
 }
 
-export function publicDraw(draw) {
+export function deliverySummary(draw) {
   return {
-    id: draw.id,
-    eventName: draw.eventName,
-    createdAt: draw.createdAt,
-    firstGiver: draw.deliveries[0].giver.name,
-    deliveries: draw.deliveries.map(({ giver, status }) => ({
-      name: giver.name,
-      email: giver.email,
-      status
-    }))
+    total: draw.deliveries.length,
+    sent: draw.deliveries.filter(({ status }) => status === 'sent').length,
+    pending: draw.deliveries.filter(({ status }) => status === 'pending' || status === 'failed').length,
+    uncertain: draw.deliveries.filter(({ status }) => status === 'uncertain').length
   };
 }

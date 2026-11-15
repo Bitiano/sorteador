@@ -1,7 +1,8 @@
 const $ = (selector) => document.querySelector(selector);
 const participants = $('#participants');
 const firstPerson = $('#first-person');
-let currentDrawId = localStorage.getItem('secretDrawId');
+localStorage.removeItem('secretDrawId');
+let retryId = null;
 let busy = false;
 
 function showMessage(target, text, success = false) {
@@ -50,60 +51,42 @@ async function api(path, options = {}) {
   return data;
 }
 
-function renderDraw(draw, error = '') {
-  $('#workspace').hidden = true;
-  $('#result').hidden = false;
-  $('#result-subtitle').textContent = `${draw.eventName} · ${draw.deliveries.length} participantes · começa com ${draw.firstGiver}`;
-  const list = $('#delivery-list');
-  list.replaceChildren();
-  const labels = { sent: 'E-mail aceito ✓', pending: 'Pendente', failed: 'Falhou', uncertain: 'Envio incerto' };
-  for (const item of draw.deliveries) {
-    const row = document.createElement('div');
-    row.className = 'delivery-row';
-    const person = document.createElement('div');
-    const name = document.createElement('div');
-    name.className = 'delivery-name';
-    name.textContent = item.name;
-    const email = document.createElement('div');
-    email.className = 'delivery-email';
-    email.textContent = item.email;
-    person.append(name, email);
-    const status = document.createElement('span');
-    status.className = `status ${item.status}`;
-    status.textContent = labels[item.status] || item.status;
-    row.append(person, status);
-    list.append(row);
-  }
-  const sent = draw.deliveries.filter((item) => item.status === 'sent').length;
-  const retry = draw.deliveries.some((item) => item.status === 'pending' || item.status === 'failed');
-  $('#retry-button').hidden = !retry;
-  const uncertain = draw.deliveries.some((item) => item.status === 'uncertain');
-  showMessage($('#result-message'), error || (uncertain ? 'Há um envio incerto. Confira o histórico na Brevo antes de criar outro sorteio; esta pessoa não será reenviada automaticamente.' : sent === draw.deliveries.length ? 'Todos os e-mails foram aceitos pela Brevo.' : ''), !error && !uncertain && sent === draw.deliveries.length);
+function showOutcome(result, error = '') {
+  const summary = result.summary;
+  retryId = result.retryId || null;
+  $('#retry-button').hidden = !retryId;
+  $('#new-button').hidden = false;
+  $('#draw-button').disabled = true;
+  let message = `${summary.sent} de ${summary.total} e-mails aceitos pela Brevo.`;
+  if (error) message += ` ${error}`;
+  if (summary.uncertain) message += ' Há envio incerto: confira o histórico na Brevo antes de iniciar outro sorteio.';
+  if (retryId) message += ' O sorteio permanece apenas na memória do servidor enquanto ele estiver ligado; use o botão abaixo para tentar os pendentes.';
+  if (!error && !summary.uncertain) message += ' Nenhum resultado foi salvo no computador.';
+  showMessage($('#message'), message, !error && !summary.uncertain);
 }
 
-async function send(drawId) {
+async function send(path, body) {
   busy = true;
   $('#draw-button').disabled = true;
   $('#retry-button').disabled = true;
   $('#draw-button').textContent = 'Enviando e-mails…';
-  $('#retry-button').textContent = 'Enviando…';
   showMessage($('#message'), 'Enviando os resultados individualmente. Aguarde nesta página.', true);
   try {
-    const result = await api(`/api/sorteios/${drawId}/enviar`, { method: 'POST' });
-    renderDraw(result.draw);
+    const result = await api(path, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) });
+    showOutcome(result);
   } catch (error) {
-    if (error.data?.draw) renderDraw(error.data.draw, error.message);
-    else showMessage($('#result').hidden ? $('#message') : $('#result-message'), error.message);
+    if (error.data?.summary) showOutcome(error.data, error.message);
+    else showMessage($('#message'), `${error.message} Se o envio foi iniciado, confira o histórico na Brevo antes de sortear novamente.`);
   } finally {
     busy = false;
-    $('#draw-button').disabled = false;
+    if (!$('#new-button').hidden) $('#draw-button').disabled = true;
+    else $('#draw-button').disabled = false;
     $('#retry-button').disabled = false;
     $('#draw-button').innerHTML = 'Sortear e enviar e-mails <span aria-hidden="true">↗</span>';
-    $('#retry-button').innerHTML = 'Tentar enviar os pendentes <span aria-hidden="true">↗</span>';
   }
 }
 
-$('#draw-button').addEventListener('click', async () => {
+$('#draw-button').addEventListener('click', () => {
   if (busy) return;
   const eventName = $('#event-name').value.trim();
   const people = [...participants.querySelectorAll('.person-row')].map((row) => ({
@@ -111,37 +94,26 @@ $('#draw-button').addEventListener('click', async () => {
     email: row.querySelector('.person-email').value.trim()
   }));
   if (!eventName || people.some((person) => !person.name || !person.email)) return showMessage($('#message'), 'Preencha o nome do evento e todos os participantes.');
-  try {
-    $('#draw-button').disabled = true;
-    const { draw } = await api('/api/sorteios', { method: 'POST', body: JSON.stringify({ eventName, participants: people, firstEmail: firstPerson.value }) });
-    currentDrawId = draw.id;
-    localStorage.setItem('secretDrawId', currentDrawId);
-    renderDraw(draw);
-    await send(currentDrawId);
-  } catch (error) {
-    showMessage($('#message'), error.message);
-    $('#draw-button').disabled = false;
-  }
+  send('/api/sorteios', { eventName, participants: people, firstEmail: firstPerson.value });
 });
 
-$('#retry-button').addEventListener('click', () => { if (!busy && currentDrawId) send(currentDrawId); });
-$('#new-button').addEventListener('click', () => {
-  currentDrawId = null;
-  localStorage.removeItem('secretDrawId');
-  $('#result').hidden = true;
-  $('#workspace').hidden = false;
+$('#retry-button').addEventListener('click', () => { if (!busy && retryId) send(`/api/sorteios/${retryId}/enviar`); });
+$('#new-button').addEventListener('click', async () => {
+  if (busy) return;
+  if (retryId) await api(`/api/sorteios/${retryId}/descartar`, { method: 'POST' }).catch(() => {});
+  retryId = null;
+  $('#event-name').value = '';
+  participants.replaceChildren();
+  addPerson(); addPerson(); addPerson();
+  $('#retry-button').hidden = true;
+  $('#new-button').hidden = true;
+  $('#draw-button').disabled = false;
   showMessage($('#message'), '');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 $('#add-person').addEventListener('click', () => addPerson());
 addPerson(); addPerson(); addPerson();
 
-if (currentDrawId) {
-  api(`/api/sorteios/${currentDrawId}`).then(({ draw }) => renderDraw(draw)).catch(() => {
-    localStorage.removeItem('secretDrawId');
-    currentDrawId = null;
-  });
-}
 api('/api/config').then(({ configured }) => {
-  if (!configured && !currentDrawId) showMessage($('#message'), 'Antes de enviar, configure sua chave da Brevo e o e-mail remetente no arquivo .env.');
+  if (!configured) showMessage($('#message'), 'Antes de enviar, configure sua chave da Brevo e o e-mail remetente no arquivo .env.');
 }).catch(() => {});

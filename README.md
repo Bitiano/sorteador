@@ -17,10 +17,10 @@ A Brevo informa que o plano gratuito permite **300 e-mails por dia**. Se você u
 - Informe no mínimo 3 participantes, com nomes e e-mails únicos.
 - Escolha opcionalmente quem começa a dar os presentes. Se deixar em branco, o início é aleatório.
 - Clique em **Sortear e enviar e-mails**. A ordem é embaralhada com o gerador criptográfico do Node.js.
-- O resultado fica salvo em `.data/` para retomar os envios pendentes sem mudar o sorteio. Essa pasta e o `.env` são ignorados pelo Git.
-- A tela de acompanhamento mostra apenas o estado de cada envio, sem revelar quem cada pessoa tirou.
+- Os pares ficam somente na memória do servidor durante o envio. A aplicação não grava o resultado em arquivo, no navegador ou na resposta da API. A tela mostra apenas a quantidade total de e-mails aceitos.
+- Se houver falha, você pode tentar enviar os pendentes enquanto a página e o servidor estiverem abertos. Reiniciar o servidor perde esse sorteio. Antes de iniciar outro, confira os envios na Brevo para evitar mensagens duplicadas.
 
-Se um envio ficar como **incerto**, confira o histórico de e-mails na Brevo antes de fazer outro sorteio. O aplicativo não o reenviará automaticamente, para evitar mensagens duplicadas.
+Se um envio ficar **incerto**, confira o histórico de e-mails na Brevo antes de fazer outro sorteio. O aplicativo não o reenviará automaticamente, para evitar mensagens duplicadas. A Brevo pode manter registros dos e-mails enviados; a aplicação não controla esse histórico.
 
 O servidor escuta apenas em `127.0.0.1`. Não publique esta versão diretamente na internet: ela foi feita para o organizador executar no próprio computador.
 

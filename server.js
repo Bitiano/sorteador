@@ -1,11 +1,10 @@
 import http from 'node:http';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createDraw, publicDraw } from './draw.js';
+import { createDraw, deliverySummary } from './draw.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const dataDir = join(root, '.data');
 const publicDir = join(root, 'public');
 
 async function loadEnv() {
@@ -36,43 +35,22 @@ async function readJson(request) {
   catch { throw Object.assign(new Error('JSON inválido.'), { status: 400 }); }
 }
 
-function drawPath(id) {
-  if (!/^[0-9a-f-]{36}$/.test(id)) throw Object.assign(new Error('Sorteio não encontrado.'), { status: 404 });
-  return join(dataDir, `${id}.json`);
-}
-
-async function readDraw(id) {
-  try { return JSON.parse(await readFile(drawPath(id), 'utf8')); }
-  catch (error) {
-    if (error.code === 'ENOENT') throw Object.assign(new Error('Sorteio não encontrado.'), { status: 404 });
-    throw error;
-  }
-}
-
-async function saveDraw(draw) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(drawPath(draw.id), JSON.stringify(draw, null, 2), { flag: 'w' });
-}
-
 function emailText(draw, delivery) {
   return `Olá, ${delivery.giver.name}!\n\nO sorteio de ${draw.eventName} foi realizado. Você vai presentear: ${delivery.receiver.name}.\n\nGuarde segredo para manter a surpresa!\n`;
 }
 
-export async function sendPending(draw, sendEmail, persist = saveDraw) {
+export async function sendPending(draw, sendEmail) {
   for (const delivery of draw.deliveries) {
     if (delivery.status === 'sent' || delivery.status === 'uncertain') continue;
     try {
-      const messageId = await sendEmail(draw, delivery);
+      await sendEmail(draw, delivery);
       delivery.status = 'sent';
-      delivery.messageId = messageId;
-      await persist(draw);
     } catch (error) {
       delivery.status = error.uncertain ? 'uncertain' : 'failed';
-      await persist(draw);
-      return { error: error.message, draw: publicDraw(draw) };
+      return { error: error.message, summary: deliverySummary(draw) };
     }
   }
-  return { draw: publicDraw(draw) };
+  return { summary: deliverySummary(draw) };
 }
 
 async function brevoSend(draw, delivery) {
@@ -100,11 +78,8 @@ async function brevoSend(draw, delivery) {
     throw Object.assign(new Error('Não foi possível confirmar o envio. Confira o histórico na Brevo antes de tentar novamente.'), { uncertain: true });
   }
   if (!response.ok) {
-    const detail = await response.json().catch(() => ({}));
-    throw new Error(`Brevo recusou o envio (${response.status}): ${String(detail.message || 'verifique a chave, o remetente e a cota diária').slice(0, 180)}`);
+    throw new Error(`Brevo recusou o envio (${response.status}). Verifique a chave, o remetente e a cota diária.`);
   }
-  const result = await response.json().catch(() => ({}));
-  return result.messageId || 'aceito';
 }
 
 const files = {
@@ -115,7 +90,15 @@ const files = {
 
 await loadEnv();
 const port = Number(process.env.PORT || 3000);
+const draws = new Map();
 const active = new Set();
+
+async function deliver(draw) {
+  const result = await sendPending(draw, brevoSend);
+  if (result.summary.pending === 0) draws.delete(draw.id);
+  return { ...result, retryId: result.summary.pending ? draw.id : null };
+}
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
@@ -133,21 +116,30 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, { configured: Boolean(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL) });
     }
     if (request.method === 'POST' && url.pathname === '/api/sorteios') {
+      if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) {
+        return json(response, 503, { error: 'Configure BREVO_API_KEY e BREVO_SENDER_EMAIL no arquivo .env e reinicie o servidor.' });
+      }
       const draw = createDraw(await readJson(request));
-      await saveDraw(draw);
-      return json(response, 201, { draw: publicDraw(draw) });
+      draws.set(draw.id, draw);
+      const result = await deliver(draw);
+      return json(response, result.error ? 502 : 200, result);
     }
-    const match = url.pathname.match(/^\/api\/sorteios\/([0-9a-f-]{36})(\/enviar)?$/);
-    if (match && request.method === 'GET' && !match[2]) {
-      return json(response, 200, { draw: publicDraw(await readDraw(match[1])) });
-    }
-    if (match && request.method === 'POST' && match[2]) {
+    const match = url.pathname.match(/^\/api\/sorteios\/([0-9a-f-]{36})\/enviar$/);
+    if (match && request.method === 'POST') {
       if (active.has(match[1])) return json(response, 409, { error: 'O envio já está em andamento.' });
+      const draw = draws.get(match[1]);
+      if (!draw) return json(response, 404, { error: 'Sorteio não disponível. Ele não é salvo e pode ter sido perdido após reiniciar o servidor.' });
       active.add(match[1]);
       try {
-        const result = await sendPending(await readDraw(match[1]), brevoSend);
+        const result = await deliver(draw);
         return json(response, result.error ? 502 : 200, result);
       } finally { active.delete(match[1]); }
+    }
+    const discard = url.pathname.match(/^\/api\/sorteios\/([0-9a-f-]{36})\/descartar$/);
+    if (discard && request.method === 'POST') {
+      if (active.has(discard[1])) return json(response, 409, { error: 'O envio ainda está em andamento.' });
+      draws.delete(discard[1]);
+      return json(response, 200, { discarded: true });
     }
     json(response, 404, { error: 'Página não encontrada.' });
   } catch (error) {
